@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+*.user
+.vs/
+
+# Published builds (large single-file exe, > GitHub 100 MB limit) - build with the command in README.md
+Release/
+
+# Runtime files created next to the exe (may contain API keys / production data)
+settings.json
+processed.txt
+Processed/
+Logs/
