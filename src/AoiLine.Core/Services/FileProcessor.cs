@@ -1,36 +1,30 @@
-using AoiUploader.Models;
+using AoiLine.Core.Models;
 
-namespace AoiUploader.Services;
+namespace AoiLine.Core.Services;
 
-/// <summary>Match → parse → build payload → (optionally) send. Shared by the folder monitor and the "Test send" button.</summary>
+/// <summary>Match → parse → build payload → (optionally) send.</summary>
 public static class FileProcessor
 {
-    /// <param name="inputValue">
-    /// Value entered by the operator. The file must match it, otherwise Kind = Mismatch and nothing is sent.
-    /// null = no check (Test send): the file's own value is used for {{InputValue}}.
-    /// </param>
-    /// <param name="extras">Extra operator inputs (e.g. WorkOrder) - sent to the API as {{Key}}.</param>
-    public static async Task<FileResult> ProcessAsync(string path, AppSettings s, bool send, string? inputValue,
-        IReadOnlyDictionary<string, string>? extras, CancellationToken ct)
+    public static async Task<FileResult> ProcessAsync(ProcessRequest req, ProcessingSettings s, bool send, CancellationToken ct)
     {
-        var r = new FileResult { FilePath = path, FileName = Path.GetFileName(path), Kind = ResultKind.Failed };
-        if (extras != null)
-            foreach (var kv in extras) r.Extras[kv.Key] = kv.Value;
+        var r = new FileResult { FileName = req.FileName, LineId = req.LineId, Kind = ResultKind.Failed };
+        if (req.Extras != null)
+            foreach (var kv in req.Extras) r.Extras[kv.Key] = kv.Value;
 
-        // File-name match needs no reading, so a wrong file is never even opened.
-        if (inputValue != null && !InputMatcher.NeedsParse(s.Input))
+        // File-name match needs no parsing, so a wrong file is rejected immediately.
+        if (req.InputValue != null && !InputMatcher.NeedsParse(s.Input))
         {
-            var values = InputMatcher.GetFileValues(path, null, s.Input);
+            var values = InputMatcher.GetFileValues(req.FileName, null, s.Input);
             r.FileValue = string.Join(", ", values);
-            r.InputValue = inputValue;
-            var mismatch = InputMatcher.Check(values, inputValue, s.Input);
+            r.InputValue = req.InputValue;
+            var mismatch = InputMatcher.Check(values, req.InputValue, s.Input);
             if (mismatch != null) return Mismatch(r, mismatch, s.Input.Label);
         }
 
         ParsedFile pf;
         try
         {
-            pf = TstParser.Parse(path, s);
+            pf = TstParser.Parse(req.FileName, req.Content, s);
         }
         catch (Exception ex)
         {
@@ -47,13 +41,13 @@ public static class FileProcessor
         r.Ng = pf.NgQty;
         var warnings = string.Join("; ", pf.Warnings);
 
-        var fileValues = InputMatcher.GetFileValues(path, pf, s.Input);
+        var fileValues = InputMatcher.GetFileValues(req.FileName, pf, s.Input);
         r.FileValue = string.Join(", ", fileValues);
-        if (inputValue != null)
+        if (req.InputValue != null)
         {
-            var mismatch = InputMatcher.Check(fileValues, inputValue, s.Input);
+            var mismatch = InputMatcher.Check(fileValues, req.InputValue, s.Input);
             if (mismatch != null) return Mismatch(r, mismatch, s.Input.Label);
-            pf.InputValue = inputValue.Trim();
+            pf.InputValue = req.InputValue.Trim();
         }
         else
         {
@@ -61,6 +55,8 @@ public static class FileProcessor
         }
         r.InputValue = pf.InputValue;
         foreach (var kv in r.Extras) pf.Extras[kv.Key] = kv.Value;
+        pf.LineId = req.LineId;
+        pf.LineName = req.LineName;
 
         if (pf.Records.Count == 0)
         {

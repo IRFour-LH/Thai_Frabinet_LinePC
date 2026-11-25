@@ -1,17 +1,17 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using AoiUploader.Models;
+using AoiLine.Core.Models;
 
-namespace AoiUploader.Services;
+namespace AoiLine.Core.Services;
 
 /// <summary>
-/// Remembers which files were sent successfully, in one text file per day:
-///   Processed\2026-11-25.txt
-///   2026-11-25 10:15:02 | B603401X1101_20250724002918001.TST | input=B603401X1101 | WorkOrder=WO1 | rows=7 | qty=5 | good=5 | ng=0 | OK
-/// Daily files older than "keep days" are deleted. Only these list files are deleted -
-/// AOI result files are never touched.
+/// Remembers which files were handled, in one text file per day (e.g. Processed\L3\2026-11-25.txt):
+///   2026-11-25 10:15:02 | B603401X1101_20250724002918001.TST | line=L3 | input=B603401X1101 | WorkOrder=WO1 | rows=7 | qty=5 | good=5 | ng=0 | OK
+/// Daily files older than "keep days" are deleted. Only these list files (yyyy-MM-dd.txt) are
+/// deleted - AOI result files are never touched.
+/// Used by the server (files sent to the API) and by the agent (files forwarded to the server).
 /// </summary>
-public sealed class ProcessedTracker
+public sealed class DailyFileList
 {
     private const string DateFormat = "yyyy-MM-dd";
     private static readonly Regex DailyName = new(@"^\d{4}-\d{2}-\d{2}\.txt$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -21,16 +21,12 @@ public sealed class ProcessedTracker
     private int _keepDays;
     private DateTime _lastCleanup = DateTime.MinValue;
 
-    /// <summary>Folder holding the daily list files.</summary>
     public string Folder { get; private set; } = "";
 
-    /// <summary>Today's list file.</summary>
     public string TodayFile => Path.Combine(Folder, DateTime.Now.ToString(DateFormat, CultureInfo.InvariantCulture) + ".txt");
 
-    /// <param name="folder">Folder for daily list files.</param>
     /// <param name="keepDays">Delete daily lists older than this. 0 = keep forever.</param>
-    /// <param name="legacyFile">Old single processed.txt - read only, if it exists.</param>
-    public void Load(string folder, int keepDays, string? legacyFile = null)
+    public void Load(string folder, int keepDays)
     {
         lock (_lock)
         {
@@ -39,32 +35,42 @@ public sealed class ProcessedTracker
             _names.Clear();
             Directory.CreateDirectory(folder);
             CleanupLocked();
-
             foreach (var file in DailyFiles())
-                AddNames(file);
-            if (!string.IsNullOrWhiteSpace(legacyFile) && File.Exists(legacyFile))
-                AddNames(legacyFile);
+            {
+                foreach (var line in File.ReadLines(file))
+                {
+                    var name = ParseName(line);
+                    if (name != null) _names.Add(name);
+                }
+            }
         }
     }
 
     public int Count { get { lock (_lock) return _names.Count; } }
 
-    public bool IsProcessed(string fileName)
+    public bool Contains(string fileName)
     {
         lock (_lock) return _names.Contains(fileName);
     }
 
-    public void MarkProcessed(FileResult r)
+    /// <summary>Records a file with free-text details (e.g. "status=accepted").</summary>
+    public void Add(string fileName, string details)
     {
         lock (_lock)
         {
-            _names.Add(r.FileName);
+            _names.Add(fileName);
             Directory.CreateDirectory(Folder);
-            var extras = string.Concat(r.Extras.Select(kv => $" | {kv.Key}={kv.Value}"));
-            var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {r.FileName} | input={r.InputValue}{extras} | rows={r.Rows} | qty={r.Qty} | good={r.Good} | ng={r.Ng} | OK";
+            var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {fileName}{(details.Length > 0 ? " | " + details : "")}";
             File.AppendAllText(TodayFile, line + Environment.NewLine);
-            if (_lastCleanup.Date != DateTime.Today) CleanupLocked(); // once a day while running
+            if (_lastCleanup.Date != DateTime.Today) CleanupLocked();
         }
+    }
+
+    /// <summary>Records a file sent to the API, with line, inputs and quantities.</summary>
+    public void AddSent(FileResult r)
+    {
+        var extras = string.Concat(r.Extras.Select(kv => $" | {kv.Key}={kv.Value}"));
+        Add(r.FileName, $"line={r.LineId} | input={r.InputValue}{extras} | rows={r.Rows} | qty={r.Qty} | good={r.Good} | ng={r.Ng} | OK");
     }
 
     /// <summary>Forget a file (used by Resend). Removes its line from whichever daily list has it.</summary>
@@ -101,7 +107,11 @@ public sealed class ProcessedTracker
         }
     }
 
-    /// <summary>Deletes daily list files older than keep days. Never touches anything else.</summary>
+    public void Cleanup()
+    {
+        lock (_lock) CleanupLocked();
+    }
+
     private void CleanupLocked()
     {
         _lastCleanup = DateTime.Now;
@@ -115,29 +125,20 @@ public sealed class ProcessedTracker
             try
             {
                 File.Delete(file);
-                AppLogger.Info($"Deleted old processed list {Path.GetFileName(file)} (older than {_keepDays} days)");
+                AppLog.Info($"Deleted old list {file} (older than {_keepDays} days)");
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"Cannot delete old processed list {file}: {ex.Message}");
+                AppLog.Warn($"Cannot delete old list {file}: {ex.Message}");
             }
         }
     }
 
-    /// <summary>Only files named like 2026-11-25.txt in the processed folder.</summary>
+    /// <summary>Only files named like 2026-11-25.txt.</summary>
     private IEnumerable<string> DailyFiles() =>
         Directory.Exists(Folder)
             ? Directory.EnumerateFiles(Folder, "*.txt").Where(f => DailyName.IsMatch(Path.GetFileName(f))).ToList()
             : Enumerable.Empty<string>();
-
-    private void AddNames(string file)
-    {
-        foreach (var line in File.ReadLines(file))
-        {
-            var name = ParseName(line);
-            if (name != null) _names.Add(name);
-        }
-    }
 
     private static int? ReadInt(string line, string key)
     {

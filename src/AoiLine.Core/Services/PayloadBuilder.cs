@@ -2,9 +2,9 @@ using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using AoiUploader.Models;
+using AoiLine.Core.Models;
 
-namespace AoiUploader.Services;
+namespace AoiLine.Core.Services;
 
 /// <summary>
 /// Builds the API body from a text template with {{Placeholders}}.
@@ -15,11 +15,12 @@ public static class PayloadBuilder
     public const string DefaultPerFileTemplate =
 """
 {
-  "fileName": "{{FileName}}",
-  "inputValue": "{{InputValue}}",
+  "line": "{{LineId}}",
+  "lineName": "{{LineName}}",
   "workOrder": "{{WorkOrder}}",
+  "productName": "{{InputValue}}",
+  "fileName": "{{FileName}}",
   "recipe": "{{Recipe}}",
-  "machine": "{{MachineName}}",
   "pcbQty": {{PcbQty}},
   "rowCount": {{RowCount}},
   "goodQty": {{GoodQty}},
@@ -32,11 +33,12 @@ public static class PayloadBuilder
     public const string DefaultPerRowTemplate =
 """
 {
-  "fileName": "{{FileName}}",
-  "inputValue": "{{InputValue}}",
+  "line": "{{LineId}}",
+  "lineName": "{{LineName}}",
   "workOrder": "{{WorkOrder}}",
+  "productName": "{{InputValue}}",
+  "fileName": "{{FileName}}",
   "recipe": "{{Recipe}}",
-  "machine": "{{MachineName}}",
   "rowNo": {{RowNo}},
   "sentTime": "{{SentTime}}",
   "record": {{Record}}
@@ -45,24 +47,33 @@ public static class PayloadBuilder
 
     public const string PlaceholderHelp =
 """
-Input:  {{InputValue}} = value entered by the operator to match files (Product Name)
-        {{WorkOrder}}  = an additional input (Operator Input tab), by its Key
-File:   {{FileName}}  {{FilePath}}  {{Recipe}}  {{MachineName}}  {{SentTime}}
-Qty:    {{PcbQty}}  {{GoodQty}}  {{NgQty}}            (numbers - no quotes; by row or by distinct
-                                                     barcode, as chosen on the General tab)
-        {{RowCount}} = number of rows always          {{QtyMode}} = "ByRow" / "ByDistinctField"
-Data:   {{Records}}  = JSON array of all rows        (Per file mode)
-        {{Record}}   = JSON object of one row        (Per row mode)
-        {{RowNo}}    = row number 1, 2, 3...         (Per row mode)
+Line:   {{LineId}}  {{LineName}}
+Input:  {{InputValue}} = Product Name entered by the operator
+        {{WorkOrder}}  = an additional input, by its Key (also {{Input.WorkOrder}})
+File:   {{FileName}}  {{Recipe}}  {{MachineName}}  {{SentTime}}
+Qty:    {{PcbQty}}  {{GoodQty}}  {{NgQty}}  {{RowCount}}   (numbers - no quotes)
+        {{QtyMode}} = "ByRow" / "ByDistinctField"
+Data:   {{Records}} = JSON array of all rows   (Per file mode)
+        {{Record}}  = JSON object of one row   (Per row mode)
+        {{RowNo}}   = row number 1, 2, 3...     (Per row mode)
 Field:  {{Field.BarcodeID}} = value of a mapped field (Per row: that row, Per file: first row)
 Text placeholders are inserted without quotes, e.g.  "serial": "{{Field.BarcodeID}}"
 """;
+
+    /// <summary>Placeholder names reserved by the program (an extra input cannot use these keys).</summary>
+    public static readonly string[] BuiltInNames =
+    {
+        "FileName", "FilePath", "Recipe", "MachineName", "SentTime", "PcbQty", "GoodQty", "NgQty",
+        "Records", "Record", "RowNo", "RowCount", "InputValue", "QtyMode", "LineId", "LineName",
+    };
+
+    public static bool IsBuiltIn(string key) => BuiltInNames.Contains(key, StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions JsonOpt = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     private static readonly JsonSerializerOptions PrettyOpt = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, WriteIndented = true };
     private static readonly Regex Token = new(@"\{\{\s*([A-Za-z0-9_.\-]+)\s*\}\}", RegexOptions.Compiled);
 
-    public static List<string> Build(AppSettings s, ParsedFile pf)
+    public static List<string> Build(ProcessingSettings s, ParsedFile pf)
     {
         var sentTime = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
         if (s.Api.SendMode == SendMode.PerRow)
@@ -92,7 +103,7 @@ Text placeholders are inserted without quotes, e.g.  "serial": "{{Field.BarcodeI
             return key.ToLowerInvariant() switch
             {
                 "filename" => Escape(pf.FileName),
-                "filepath" => Escape(pf.FilePath),
+                "filepath" => Escape(pf.FileName),
                 "recipe" => Escape(pf.Recipe),
                 "machinename" => Escape(Environment.MachineName),
                 "senttime" => Escape(sentTime),
@@ -102,6 +113,8 @@ Text placeholders are inserted without quotes, e.g.  "serial": "{{Field.BarcodeI
                 "rowcount" => pf.RowCount.ToString(CultureInfo.InvariantCulture),
                 "inputvalue" => Escape(pf.InputValue),
                 "qtymode" => Escape(pf.QtyMode.ToString()),
+                "lineid" => Escape(pf.LineId),
+                "linename" => Escape(pf.LineName),
                 "records" => JsonSerializer.Serialize(pf.Records, JsonOpt),
                 "record" => JsonSerializer.Serialize(record ?? pf.Records.FirstOrDefault() ?? new(), JsonOpt),
                 "rowno" => (rowIndex + 1).ToString(CultureInfo.InvariantCulture),
@@ -109,16 +122,6 @@ Text placeholders are inserted without quotes, e.g.  "serial": "{{Field.BarcodeI
             };
         });
     }
-
-    /// <summary>Placeholder names reserved by the program (an extra input cannot use these keys).</summary>
-    public static readonly string[] BuiltInNames =
-    {
-        "FileName", "FilePath", "Recipe", "MachineName", "SentTime", "PcbQty", "GoodQty", "NgQty",
-        "Records", "Record", "RowNo", "RowCount", "InputValue", "QtyMode",
-    };
-
-    public static bool IsBuiltIn(string key) =>
-        BuiltInNames.Contains(key, StringComparer.OrdinalIgnoreCase);
 
     private static string Escape(string? s) => JsonSerializer.Serialize(s ?? "", JsonOpt)[1..^1];
 

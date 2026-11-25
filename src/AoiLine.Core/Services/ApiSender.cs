@@ -1,7 +1,7 @@
 using System.Text;
-using AoiUploader.Models;
+using AoiLine.Core.Models;
 
-namespace AoiUploader.Services;
+namespace AoiLine.Core.Services;
 
 public class ApiResult
 {

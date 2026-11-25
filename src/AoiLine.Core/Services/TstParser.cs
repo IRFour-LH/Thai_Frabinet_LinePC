@@ -1,22 +1,22 @@
 using System.Globalization;
 using System.Text;
-using AoiUploader.Models;
+using AoiLine.Core.Models;
 
-namespace AoiUploader.Services;
+namespace AoiLine.Core.Services;
 
 /// <summary>Reads an AOI result file using the line numbers and column mapping in settings.</summary>
 public static class TstParser
 {
-    public static List<string> ReadLines(string path)
+    /// <summary>Reads a file without blocking the AOI machine (FileShare.ReadWrite).</summary>
+    public static string ReadText(string path)
     {
-        // FileShare.ReadWrite so we never block the AOI machine from writing.
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var sr = new StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        var lines = new List<string>();
-        string? line;
-        while ((line = sr.ReadLine()) != null) lines.Add(line);
-        return lines;
+        return sr.ReadToEnd();
     }
+
+    public static List<string> SplitLines(string content) =>
+        content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').ToList();
 
     public static string ResolveDelimiter(string d) => d switch
     {
@@ -33,36 +33,48 @@ public static class TstParser
         return line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
     }
 
-    public static List<string> ReadHeaders(string path, GeneralSettings g)
+    public static List<string> ReadHeaders(string content, ParsingSettings p)
     {
-        var lines = ReadLines(path);
-        if (g.HeaderLineNumber < 1 || g.HeaderLineNumber > lines.Count) return new();
-        return SplitHeader(lines[g.HeaderLineNumber - 1], ResolveDelimiter(g.Delimiter));
+        var lines = SplitLines(content);
+        if (p.HeaderLineNumber < 1 || p.HeaderLineNumber > lines.Count) return new();
+        return SplitHeader(lines[p.HeaderLineNumber - 1], ResolveDelimiter(p.Delimiter));
     }
 
     /// <summary>Returns the first data row split into values (used to guess data types).</summary>
-    public static string[]? ReadFirstDataRow(string path, GeneralSettings g)
+    public static string[]? ReadFirstDataRow(string content, ParsingSettings p)
     {
-        var lines = ReadLines(path);
-        var delim = ResolveDelimiter(g.Delimiter);
-        for (int i = Math.Max(1, g.DataStartLineNumber) - 1; i < lines.Count; i++)
+        var lines = SplitLines(content);
+        var delim = ResolveDelimiter(p.Delimiter);
+        for (int i = Math.Max(1, p.DataStartLineNumber) - 1; i < lines.Count; i++)
         {
             var line = lines[i].Trim();
-            if (IsDataLine(line)) return line.Split(delim).Select(p => p.Trim()).ToArray();
+            if (IsDataLine(line)) return line.Split(delim).Select(x => x.Trim()).ToArray();
         }
         return null;
+    }
+
+    public static ColumnDataType GuessType(string? v, string dateFormat)
+    {
+        if (string.IsNullOrEmpty(v)) return ColumnDataType.Text;
+        if (v.Length == dateFormat.Length &&
+            DateTime.TryParseExact(v, dateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+            return ColumnDataType.Date;
+        // Short integers only - long digit strings are usually barcodes and must stay text.
+        if (v.Length <= 9 && long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            return ColumnDataType.Number;
+        return ColumnDataType.Text;
     }
 
     private static bool IsDataLine(string line) =>
         line.Length > 0 && !line.StartsWith('|') && !line.StartsWith("--");
 
-    public static ParsedFile Parse(string path, AppSettings settings)
+    public static ParsedFile Parse(string fileName, string content, ProcessingSettings settings)
     {
-        var g = settings.General;
-        var lines = ReadLines(path);
+        var g = settings.Parsing;
+        var lines = SplitLines(content);
         var delim = ResolveDelimiter(g.Delimiter);
 
-        var pf = new ParsedFile { FilePath = path, FileName = Path.GetFileName(path) };
+        var pf = new ParsedFile { FileName = fileName };
 
         if (g.RecipeLineNumber >= 1 && g.RecipeLineNumber <= lines.Count)
             pf.Recipe = lines[g.RecipeLineNumber - 1].Trim();
@@ -91,6 +103,7 @@ public static class TstParser
         var goodSet = (g.GoodValues ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         int FieldIndex(string? field) => resolved
             .Where(r => r.Map.FieldName.Equals(field?.Trim(), StringComparison.OrdinalIgnoreCase))
             .Select(r => r.Index)
@@ -113,7 +126,6 @@ public static class TstParser
             }
         }
 
-        // Per row: the key used for counting, and the result (true = good, false = NG, null = unknown).
         var rowInfo = new List<(string Key, bool? Good)>();
         int shortRows = 0;
         for (int i = Math.Max(1, g.DataStartLineNumber) - 1; i < lines.Count; i++)
@@ -121,7 +133,7 @@ public static class TstParser
             var line = lines[i].Trim();
             if (!IsDataLine(line)) continue;
 
-            var parts = line.Split(delim).Select(p => p.Trim()).ToArray();
+            var parts = line.Split(delim).Select(x => x.Trim()).ToArray();
             var rec = new Dictionary<string, object?>();
             var rawRec = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             bool missing = false;
@@ -132,13 +144,13 @@ public static class TstParser
                 rawRec[map.FieldName] = raw;
                 if (map.Include) rec[map.FieldName] = Convert(raw, map.DataType, g);
             }
-            pf.RawRecords.Add(rawRec);
             if (missing) shortRows++;
 
             bool? good = resultIdx >= 0 && resultIdx < parts.Length ? goodSet.Contains(parts[resultIdx]) : null;
             string key = qtyIdx >= 0 && qtyIdx < parts.Length ? parts[qtyIdx] : "";
             rowInfo.Add((key, good));
             pf.Records.Add(rec);
+            pf.RawRecords.Add(rawRec);
         }
         if (shortRows > 0)
             pf.Warnings.Add($"{shortRows} row(s) have fewer columns than the mapping expects");
@@ -171,7 +183,7 @@ public static class TstParser
             if (key.Length == 0)
             {
                 empty++;
-                key = "\0row" + i; // unique key: empty value counts as its own PCB
+                key = "\0row" + i;
             }
             if (!groups.TryGetValue(key, out var current))
                 groups[key] = good;
@@ -186,7 +198,7 @@ public static class TstParser
         pf.NgQty = groups.Values.Count(v => v == false);
     }
 
-    private static object? Convert(string? raw, ColumnDataType type, GeneralSettings g)
+    private static object? Convert(string? raw, ColumnDataType type, ParsingSettings g)
     {
         if (raw == null) return null;
         switch (type)

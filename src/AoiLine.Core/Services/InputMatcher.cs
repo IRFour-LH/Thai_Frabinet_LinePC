@@ -1,28 +1,28 @@
-using AoiUploader.Models;
+using AoiLine.Core.Models;
 
-namespace AoiUploader.Services;
+namespace AoiLine.Core.Services;
 
-/// <summary>Checks whether a file belongs to the value entered by the operator (Recipe / Work Order...).</summary>
+/// <summary>Checks whether a file belongs to the value entered by the operator (Product Name).</summary>
 public static class InputMatcher
 {
     /// <summary>True if the file must be read before it can be matched.</summary>
     public static bool NeedsParse(InputSettings input) => input.MatchSource != MatchSource.FileNamePrefix;
 
-    public static string FileNamePrefix(string path, string separator)
+    public static string FileNamePrefix(string fileName, string separator)
     {
-        var name = Path.GetFileNameWithoutExtension(path);
+        var name = Path.GetFileNameWithoutExtension(fileName);
         if (string.IsNullOrEmpty(separator)) return name;
         int i = name.IndexOf(separator, StringComparison.Ordinal);
         return i > 0 ? name[..i] : name;
     }
 
     /// <summary>The value(s) found in the file. Parsed file is required unless MatchSource = FileNamePrefix.</summary>
-    public static List<string> GetFileValues(string path, ParsedFile? pf, InputSettings input)
+    public static List<string> GetFileValues(string fileName, ParsedFile? pf, InputSettings input)
     {
         switch (input.MatchSource)
         {
             case MatchSource.FileNamePrefix:
-                return new() { FileNamePrefix(path, input.FileNameSeparator) };
+                return new() { FileNamePrefix(fileName, input.FileNameSeparator) };
             case MatchSource.RecipeLine:
                 return pf == null ? new() : new() { pf.Recipe.Trim() };
             default:
