@@ -1,54 +1,132 @@
-# AOI Uploader
+# AOI Line Server
 
-WPF program (.NET 9, Windows 10/11) that watches a folder for AOI result files (`*.TST`),
-reads them using a configurable column mapping, and sends the data to a configurable API.
+Collects AOI result files (`*.TST`) from all production lines and sends them to a configurable API,
+with a web page per line for the operator (Work Order + Product Name, Start / Stop).
 
-## Install on the line PC
-1. Copy the folder `Release\AoiUploader` to the line PC (e.g. `C:\AoiUploader`). No .NET install needed.
-2. Run `AoiUploader.exe` → **Settings**.
-3. **General**: choose the watch folder. Set *Ignore files older than (days)* to `1` if the folder has old history you do not want to send.
-4. **Column Mapping**: *Detect from sample file* → rename the **API Field Name** to what your API expects → **Preview**.
-5. **API**: URL, method, headers (API key / `Authorization: Bearer ...`), body template → **Preview body** → **Test send** → tick **Enable sending to API** → **Save**.
+```
+ LINE PC 1 (also the SERVER)              LINE PC 2 ... LINE PC 10
+ AOI -> D:\AOI RESULT FILE                AOI -> D:\AOI RESULT FILE
+          |                                        |
+   AOI Line Agent (L1)                      AOI Line Agent (L2...L10)
+          |  forwards new files                    |
+          v                                        |
+   AOI Line Server  <------------------------------+
+     - one run per line (Work Order, Product Name)
+     - Product Name check, PCB qty, G/NG
+     - sends to the API  ------------------------------>  API
+     - web pages:  /line/L3   /   /settings
+```
 
-## Daily use (operator)
-1. Type or scan the **Work Order** → Enter → type or scan the **Product Name** → Enter (= **Start**).
+* **Server** (`AoiLine.Server`) - Windows service on one PC. Web pages, settings, sending to the API.
+* **Agent** (`AoiLine.Agent`) - Windows service on every line PC. Watches the local AOI folder and forwards new
+  files to the server. AOI files are only read - never moved, changed or deleted.
+* Line PCs need only a browser for the operator page. No .NET installation is needed on any PC.
+
+The previous single-PC desktop version is kept in git as tag `v1-single-pc`.
+
+---
+
+## Install
+
+### 1. Build the packages (on the development PC)
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Tools\Publish-All.ps1
+```
+Creates `Release\Server` and `Release\Agent` (about 96 MB each, self-contained).
+
+### 2. Server PC (one of the line PCs - must stay switched on)
+Copy `Release\Server` to the PC, open **PowerShell as Administrator** in that folder:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install-Server.ps1
+```
+* Installs to `C:\AoiLine\Server`, creates service **AoiLineServer** (auto start, restarts on failure)
+* Opens TCP port 5000 in Windows Firewall, creates desktop shortcut *AOI - All lines*
+* Prints the address the agents must use, e.g. `http://LINE1-PC:5000`
+* Options: `-Port 5000`, `-InstallDir C:\AoiLine\Server`
+
+Then open `http://localhost:5000/settings` and set up Column mapping and API (see below).
+
+### 3. Every line PC (including the server PC if it is also a line)
+Copy `Release\Agent` to the PC, open **PowerShell as Administrator** in that folder:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install-Agent.ps1 -ServerUrl http://LINE1-PC:5000 -LineId L3 -LineName "Line 3"
+```
+* Installs to `C:\AoiLine\Agent`, creates service **AoiLineAgent**, writes `agent.json`
+* Desktop shortcuts: **AOI Line L3** (operator page) and **AOI Agent** (agent status/settings, `http://localhost:5001`)
+* Options: `-WatchFolder "D:\AOI RESULT FILE"` (default), `-LocalPort 5001`, `-InstallDir`
+* The line appears on the server automatically within a few seconds.
+
+**Update** = run the same install script from a newer package. Settings, history and logs are kept.
+**Remove** = `Uninstall-Server.ps1` / `Uninstall-Agent.ps1` (add `-RemoveFiles` to also delete the install folder).
+
+---
+
+## Daily use (operator, page `http://SERVER:5000/line/L3`)
+1. Scan / type **Work Order** -> Enter -> scan / type **Product Name** -> Enter (= **Start**).
    Start stays disabled until every required (*) box is filled.
-2. Only AOI files **created after Start** whose Product Name matches are sent. The "This run" counters show the totals.
-3. A file for a different Product Name is **not sent** – a red banner + sound warns the operator. That file stays unsent.
-4. To change Product Name / Work Order: **Stop** → enter the new value → **Start**. Files that arrive while stopped are not sent.
-   If some files of the run failed to send and are still retrying, **Stop** warns and lists them first.
+2. Only AOI files **created after Start** whose Product Name matches are sent. Counters update live.
+3. A file with another Product Name is **not sent**: red banner + sound on that line's page. Check the value entered.
+4. To change Product Name / Work Order: **Stop** -> enter new values -> **Start**. Files arriving while stopped are not sent.
+   If files are still waiting (API or network problem), Stop lists them and asks first.
 
-Settings > **Operator Input** controls this: the label (default **Product Name**), how the value is
-matched (file name before `_`, recipe line, or a data field from Column Mapping), and the options above.
-The entered value is available in the body template as `{{InputValue}}`.
+Supervisor: `http://SERVER:5000/` shows all lines, their status, PCB qty, G/NG and warnings.
 
-*Additional inputs* (same tab) are extra boxes the operator fills before Start – by default **Work Order**
-(key `WorkOrder`, required). They are not used to match files; they are sent to the API as `{{WorkOrder}}`
-(or `{{Input.WorkOrder}}`) and written to the daily processed lists. Add more rows for e.g. Operator ID or Line.
+---
 
-## Files next to the exe
-| File | Purpose |
+## Settings (`http://SERVER:5000/settings`) - same for all lines
+| Tab | What |
 |---|---|
-| `settings.json` | All settings (edited through the Settings window) |
-| `Processed\yyyy-MM-dd.txt` | One list per day of files successfully sent (with Recipe, Work Order, qty). Lists older than *Delete lists older than (days)* are deleted automatically (0 = keep forever). **Only these list files are deleted – AOI result files are never touched.** |
-| `processed.txt` | Old single list from earlier versions – still read so those files are not re-sent, never written or deleted |
-| `Logs\yyyy-MM-dd.log` | Daily log |
+| Lines | Rename / reorder / remove lines (agent PC and watch folder shown) |
+| Operator input | Label of the main input (default **Product Name**), how it is matched (file name before `_`, recipe line, or a data field), only files after Start, warning, additional inputs (default **Work Order**, key `WorkOrder`) |
+| File format & qty | Recipe / header / data line numbers, delimiter, date formats, result field and good values, **PCB qty by row or by distinct value** (e.g. BarcodeID; NG if any row of that barcode is NG) |
+| Column mapping | API field name <-> file header (column index as fallback), type, send on/off. *Detect from sample file*, *Preview* |
+| API | URL, method, headers (API key / `Authorization`), timeout, retries, success check, body template, *Preview body*, *Test send* |
+| Server | Port, days of history to keep, agent offline timeout |
 
-## Behaviour
-- Original AOI files are **never moved, changed or locked**.
-- A file is written to `processed.txt` **only after the API returns success** (HTTP 2xx, plus optional "response contains" text).
-- Failed files are retried automatically after *Retry failed file after (s)*.
-- When the API is disabled, files are parsed and shown only (nothing is marked as sent).
-- PCB qty (Settings > General > *PCB qty calculation*):
-  - **By row** – every data row = 1 PCB.
-  - **By distinct value of field** (e.g. `BarcodeID`) – rows with the same value = 1 PCB.
-    That PCB is NG if any of its rows is NG. Rows with an empty value are each counted as 1 PCB.
-- G/NG is counted from the *Result field* using *Good values*, in the same unit as PCB qty.
-- Body template: `{{PcbQty}}` follows the chosen mode; `{{RowCount}}` is always the number of rows.
-- Double-click a row in *Recent files* to see the exact payload and API response.
+Body template placeholders include `{{LineId}}`, `{{LineName}}`, `{{WorkOrder}}`, `{{InputValue}}` (Product Name),
+`{{PcbQty}}`, `{{GoodQty}}`, `{{NgQty}}`, `{{RowCount}}`, `{{Records}}`, `{{Field.BarcodeID}}` - full list on the API tab.
 
-## Build
+Agent settings (server address, Line ID/name, watch folder, timing) are per line PC on its agent page
+`http://localhost:5001` or in `C:\AoiLine\Agent\agent.json`.
+
+---
+
+## What happens when something fails
+| Problem | Result |
+|---|---|
+| Line PC network down / agent stopped | Agent keeps the files and forwards them when back; they are still accepted (created after Start) |
+| Server PC restarts | Every line's run, counters and log are restored; agents retry |
+| API down | Server retries every *Retry failed file after* seconds; Stop warns about unsent files |
+| Server PC switched off | No line sends until it is back on; files wait on the line PCs |
+| Line PC clock differs from server | Handled - the run start is converted to each agent's clock |
+
+## Files
+| Where | What |
+|---|---|
+| `C:\AoiLine\Server\settings.json` | All server settings (edit on the Settings page) |
+| `C:\AoiLine\Server\Lines\L3\state.json` | Current run of line L3 (survives restart) |
+| `C:\AoiLine\Server\Lines\L3\processed\yyyy-MM-dd.txt` | Files sent to the API with line, Product Name, Work Order, qty |
+| `C:\AoiLine\Server\Lines\L3\archive\yyyy-MM-dd\` | Copies of received files (for Resend) |
+| `C:\AoiLine\Server\Logs\yyyy-MM-dd.log` | Server log (all lines) |
+| `C:\AoiLine\Agent\agent.json`, `Forwarded\`, `Logs\` | Agent settings, forwarded lists, log |
+
+History older than *Keep history (days)* (server) / *Delete forwarded lists after (days)* (agent) is deleted
+automatically - only these program files, never the AOI result files.
+
+---
+
+## Development
 ```
-cd AoiUploader
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o ..\Release\AoiUploader
+src/AoiLine.Core     shared logic: parsing, mapping, qty, matching, payload, API sender, daily lists
+src/AoiLine.Server   ASP.NET Core server + web pages (wwwroot, no external libraries)
+src/AoiLine.Agent    agent service + local status page
+tests/               xUnit tests for Core (dotnet test)
+Tools/               Publish-All, Install/Uninstall scripts, New-DummyTst.ps1 (test files)
 ```
+Run locally without installing:
+```powershell
+dotnet run --project src\AoiLine.Server -- --data C:\Temp\aoi-server --port 5000
+dotnet run --project src\AoiLine.Agent  -- --config C:\Temp\aoi-agent1\agent.json
+```
+Create test AOI files:
+`.\Tools\New-DummyTst.ps1 -Recipe B613351X1105 -Boards 7 -BoardsPerBarcode 2 -NgBoards 3 -Folder <watch folder>`
