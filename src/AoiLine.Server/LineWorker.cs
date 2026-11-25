@@ -131,6 +131,10 @@ public sealed class LineWorker
                 RunStartAgentUtc = _state.RunStartUtc + offset,
                 OnlyFilesAfterStart = _settings().Processing.Input.OnlyFilesAfterStart,
                 ServerNowUtc = DateTime.UtcNow,
+                LineName = Name,
+                InputLabel = InputLabel,
+                InputValue = _state.Running ? _state.InputValue : "",
+                Extras = _state.Running ? new Dictionary<string, string>(_state.Extras) : new(),
             };
         }
     }

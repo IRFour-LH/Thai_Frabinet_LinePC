@@ -34,6 +34,12 @@ public class HeartbeatResponse
 
     public bool OnlyFilesAfterStart { get; set; }
     public DateTime ServerNowUtc { get; set; }
+
+    /// <summary>For display on the agent page.</summary>
+    public string LineName { get; set; } = "";
+    public string InputLabel { get; set; } = "";
+    public string InputValue { get; set; } = "";
+    public Dictionary<string, string> Extras { get; set; } = new();
 }
 
 public class FileUploadRequest
