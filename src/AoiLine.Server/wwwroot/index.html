@@ -1,3 +1,83 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>AOI Line Server</title></head>
-<body><p>AOI Line Server is running. Web pages come in the next step.</p></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All lines - AOI</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">AOI Line Server</span>
+  <span class="title">All lines</span>
+  <nav>
+    <span class="conn" id="conn"></span>
+    <a href="/" data-nav="overview" class="active">All lines</a>
+    <a href="/settings" data-nav="settings">Settings</a>
+  </nav>
+</header>
+
+<main>
+  <section class="card totals" id="totals"></section>
+  <section class="tiles" id="tiles"><div class="muted">Loading…</div></section>
+  <p class="muted" style="margin-top:18px">
+    A line appears here automatically when the AOI Agent on its line PC connects. Click a line to open its page
+    (bookmark that page on the line PC).
+  </p>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+let labels = {};
+async function loadLabels() {
+  const s = await api("GET", "/api/settings");
+  if (s.ok) labels = Object.fromEntries(s.data.processing.input.extraInputs.map(x => [x.key.toLowerCase(), x.label || x.key]));
+}
+const labelOf = k => labels[k.toLowerCase()] || k;
+
+async function load() {
+  const res = await api("GET", "/api/lines");
+  if (!res.ok) return;
+  const lines = res.data;
+
+  const sum = (f) => lines.reduce((a, l) => a + f(l), 0);
+  const running = lines.filter(l => l.running).length;
+  const offline = lines.filter(l => !l.agent.online).length;
+  const warnings = lines.filter(l => l.warningText).length;
+  $("#totals").innerHTML = `
+    <div><b>${running} / ${lines.length}</b><span class="muted">lines running</span></div>
+    <div><b style="color:${offline ? "var(--err)" : "inherit"}">${offline}</b><span class="muted">agents offline</span></div>
+    <div><b style="color:${warnings ? "var(--err)" : "inherit"}">${warnings}</b><span class="muted">lines with warning</span></div>
+    <div><b>${sum(l => l.today.files)}</b><span class="muted">files sent today</span></div>
+    <div><b>${sum(l => l.today.qty)}</b><span class="muted">PCB qty today</span></div>
+    <div><b style="color:var(--ok)">${sum(l => l.today.good)}</b><span class="muted">good today</span></div>
+    <div><b style="color:var(--err)">${sum(l => l.today.ng)}</b><span class="muted">NG today</span></div>`;
+
+  $("#tiles").innerHTML = lines.length ? lines.map(l => {
+    const ex = Object.entries(l.extras || {}).map(([k, v]) => `<span>${esc(labelOf(k))}</span><span>${esc(v || "-")}</span>`).join("");
+    const level = l.warningText && l.statusLevel === "ok" ? "warn" : l.statusLevel;
+    return `
+    <a class="tile ${level}" href="/line/${encodeURIComponent(l.id)}">
+      <div class="row"><span class="dot ${l.statusLevel}"></span><span class="name">${esc(l.id)}</span><span class="muted">${esc(l.name)}</span></div>
+      <div class="st">${esc(l.statusText)}</div>
+      <div class="kv">
+        ${l.running ? `<span>Product</span><span><b>${esc(l.inputValue)}</b></span>${ex}<span>Started</span><span>${fmtDateTime(l.runStart)}</span>` : ""}
+        <span>Agent</span><span>${l.agent.online ? "🟢 " + esc(l.agent.machine) : "🔴 offline · " + esc(ago(l.agent.lastSeen))}</span>
+        <span>Waiting</span><span>${l.agent.pending} on PC · ${l.queued} on server</span>
+      </div>
+      <div class="nums">
+        <div><b>${l.runQty}</b><small>PCB qty</small></div>
+        <div><b style="color:var(--ok)">${l.runGood}</b><small>good</small></div>
+        <div><b style="color:var(--err)">${l.runNg}</b><small>NG</small></div>
+      </div>
+      ${l.warningText ? `<div class="warnline">⚠ ${esc(l.warningText)}</div>` : ""}
+    </a>`;
+  }).join("") : `<div class="card muted">No lines yet. Install the AOI Agent on a line PC and point it to this server.</div>`;
+}
+
+live(throttle(id => { if (id === "*") loadLabels(); load(); }, 500));
+setInterval(load, 15000);
+loadLabels().then(load);
+</script>
+</body>
+</html>

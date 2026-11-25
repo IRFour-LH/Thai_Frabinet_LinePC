@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Line</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">AOI Line Server</span>
+  <span class="title" id="title">Line</span>
+  <nav>
+    <span class="conn" id="conn"></span>
+    <a href="/" data-nav="overview">All lines</a>
+    <a href="/settings" data-nav="settings">Settings</a>
+  </nav>
+</header>
+
+<main class="cols">
+  <!-- Operator inputs + Start/Stop -->
+  <section class="card">
+    <div class="control" id="inputs"></div>
+    <div class="formerr" id="formErr" hidden></div>
+    <div class="statusline" id="statusLine"><span class="dot" id="statusDot"></span><span id="statusText">Loading…</span></div>
+  </section>
+
+  <!-- Wrong Product Name warning -->
+  <section class="banner" id="banner" hidden>
+    <span style="font-size:22px">⚠</span><span id="bannerText" style="flex:1"></span>
+    <button id="dismiss">Dismiss</button>
+  </section>
+
+  <section class="card info" id="info"></section>
+
+  <section class="counters">
+    <div class="counter"><div class="lbl">Files sent (this run)</div><div class="val" id="cFiles">0</div></div>
+    <div class="counter"><div class="lbl" id="cQtyLbl">PCB qty</div><div class="val" id="cQty">0</div></div>
+    <div class="counter good"><div class="lbl">Good (G)</div><div class="val" id="cGood">0</div></div>
+    <div class="counter ng"><div class="lbl">NG</div><div class="val" id="cNg">0</div></div>
+    <div class="counter fail"><div class="lbl">Send failures (this run)</div><div class="val" id="cFail">0</div></div>
+  </section>
+
+  <section class="card">
+    <div class="section-title">Recent files <span class="muted" style="font-weight:normal">(click a row for details)</span></div>
+    <div style="overflow:auto">
+      <table class="grid">
+        <thead><tr>
+          <th>Time</th><th>File</th><th id="thValue">File value</th><th>Work order / inputs</th>
+          <th class="num">Rows</th><th class="num">PCB qty</th><th class="num">G</th><th class="num">NG</th><th>Result</th><th>Message</th><th></th>
+        </tr></thead>
+        <tbody id="recent"><tr><td colspan="11" class="muted">No files yet.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-title">Log</div>
+    <ul class="logs" id="logs"></ul>
+  </section>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+const lineId = decodeURIComponent(location.pathname.split("/").pop());
+let current = null;          // last detail from the server
+let inputsKey = "";          // re-render inputs only when this changes
+let lastWarningCount = null; // for the warning sound
+
+async function load() {
+  const res = await api("GET", `/api/lines/${encodeURIComponent(lineId)}`);
+  if (res.status === 404) {
+    $("#statusText").textContent = `Line "${lineId}" is not known to the server. Check the Line ID in the agent settings on the line PC.`;
+    $("#statusDot").className = "dot error";
+    return;
+  }
+  if (!res.ok) return;
+  render(res.data);
+}
+
+function render(d) {
+  current = d;
+  document.title = `${d.name} - AOI`;
+  $("#title").innerHTML = `${esc(d.id)}<small>${esc(d.name)}</small>`;
+  renderInputs(d);
+
+  $("#statusDot").className = "dot " + d.statusLevel + (d.statusLevel === "ok" ? " pulse" : "");
+  $("#statusText").textContent = d.statusText;
+  $("#statusLine").className = "statusline" + (d.statusLevel === "error" ? " error" : "");
+
+  // Warning banner + sound when a new wrong-Product-Name file arrives
+  $("#banner").hidden = !d.warningText;
+  $("#bannerText").textContent = d.warningText;
+  if (lastWarningCount !== null && d.warningCount > lastWarningCount) {
+    beep(3);
+    $("#banner").classList.remove("flash"); void $("#banner").offsetWidth; $("#banner").classList.add("flash");
+  }
+  lastWarningCount = d.warningCount;
+
+  const a = d.agent;
+  const extras = Object.entries(d.extras || {}).map(([k, v]) => `${labelOf(k)} ${v}`).join(" · ");
+  const info = [
+    ["This run", d.running ? `${d.inputs.label} ${d.inputValue}${extras ? " · " + extras : ""} · started ${fmtDateTime(d.runStart)}`
+                           : d.runStop ? `Stopped ${fmtDateTime(d.runStop)}` : "Not started"],
+    ["Line PC (agent)", a.online ? `🟢 online · ${a.machine} · last seen ${ago(a.lastSeen)}` : `🔴 OFFLINE · last seen ${ago(a.lastSeen)}`],
+    ["Watch folder", a.watchFolder ? `${a.watchFolder}${a.folderExists ? "" : "  (NOT FOUND)"}` : "-"],
+    ["Waiting", `${a.pending} on line PC · ${d.queued} on server${d.retryWaiting ? ` (${d.retryWaiting} retrying)` : ""}`],
+    ["Matching", `${d.inputs.label} = ${d.matchInfo}`],
+    ["API", d.apiInfo],
+    ["Today (all runs)", `${d.today.files} file(s) · PCB qty ${d.today.qty} · G ${d.today.good} · NG ${d.today.ng}`],
+  ];
+  if (a.lastError) info.push(["Agent error", a.lastError]);
+  $("#info").innerHTML = info.map(([k, v]) => `<div><span>${esc(k)}:</span> <span>${esc(v)}</span></div>`).join("");
+
+  $("#cFiles").textContent = d.runFiles;
+  $("#cQty").textContent = d.runQty;
+  $("#cQtyLbl").textContent = `PCB qty (${d.qtyUnit})`;
+  $("#cGood").textContent = d.runGood;
+  $("#cNg").textContent = d.runNg;
+  $("#cFail").textContent = d.runFailures;
+  $("#thValue").textContent = `${d.inputs.label} in file`;
+
+  $("#recent").innerHTML = d.recent.length ? d.recent.map((r, i) => `
+    <tr class="click" data-i="${i}">
+      <td>${fmtTime(r.time)}</td><td class="mono">${esc(r.fileName)}</td><td>${esc(r.fileValue)}</td>
+      <td>${esc(Object.values(r.extras || {}).join(" · "))}</td>
+      <td class="num">${r.rows}</td><td class="num"><b>${r.qty}</b></td><td class="num">${r.good}</td><td class="num">${r.ng}</td>
+      <td class="k-${r.kind}">${esc(r.status)}</td><td>${esc(r.message)}</td>
+      <td>${d.running && r.kind !== "Mismatch" ? `<button class="small" data-resend="${esc(r.fileName)}">Resend</button>` : ""}</td>
+    </tr>`).join("") : `<tr><td colspan="11" class="muted">No files yet.</td></tr>`;
+
+  $("#logs").innerHTML = d.logs.map(l => `<li class="${(l.match(/\[(INFO|WARN|ERROR)\]/) || [])[1] || ""}">${esc(l)}</li>`).join("");
+}
+
+function labelOf(key) {
+  const x = (current?.inputs.extras || []).find(e => e.key.toLowerCase() === key.toLowerCase());
+  return x ? (x.label || x.key) : key;
+}
+
+/** Work Order (and other extra inputs) first, then the Product Name used to match files. */
+function renderInputs(d) {
+  const def = d.inputs;
+  const key = JSON.stringify([def.label, def.extras.map(e => [e.key, e.label, e.required]), d.running, d.running ? [d.inputValue, d.extras] : null]);
+  if (key === inputsKey) return; // keep what the operator is typing
+  inputsKey = key;
+
+  const fields = def.extras.map(e => ({
+    id: "x_" + e.key, key: e.key, label: e.label || e.key, required: e.required,
+    value: d.running ? (d.extras[e.key] ?? "") : (def.lastExtras[e.key] ?? ""),
+  }));
+  fields.push({ id: "mainInput", key: null, label: def.label, required: true, value: d.running ? d.inputValue : def.lastInputValue });
+
+  $("#inputs").innerHTML = fields.map(f => `
+    <div class="field">
+      <label for="${esc(f.id)}">${esc(f.label)}${f.required ? ' <span class="req">*</span>' : ""}</label>
+      <input type="text" id="${esc(f.id)}" data-key="${esc(f.key ?? "")}" value="${esc(f.value)}" ${d.running ? "disabled" : ""} autocomplete="off">
+    </div>`).join("") +
+    `<button class="startstop ${d.running ? "danger" : "primary"}" id="startStop">${d.running ? "■ Stop" : "▶ Start"}</button>`;
+
+  const boxes = $$("#inputs input");
+  boxes.forEach((b, i) => {
+    b.addEventListener("input", updateStartEnabled);
+    // Barcode scanners send Enter: next box, Enter in the last box = Start.
+    b.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (i < boxes.length - 1) { boxes[i + 1].focus(); boxes[i + 1].select(); }
+      else start();
+    });
+  });
+  $("#startStop").onclick = () => (current.running ? stop() : start());
+  updateStartEnabled();
+  if (!d.running && boxes.length) { boxes[0].focus(); boxes[0].select(); }
+}
+
+function updateStartEnabled() {
+  if (!current || current.running) { $("#startStop").disabled = false; return; }
+  const missing = $$("#inputs input").some(b => {
+    const k = b.dataset.key;
+    const req = !k || (current.inputs.extras.find(e => e.key === k)?.required);
+    return req && !b.value.trim();
+  });
+  $("#startStop").disabled = missing;
+}
+
+function showErr(text) { const e = $("#formErr"); e.textContent = text || ""; e.hidden = !text; }
+
+async function start() {
+  unlockAudio();
+  const extras = {};
+  $$("#inputs input").forEach(b => { if (b.dataset.key) extras[b.dataset.key] = b.value.trim(); });
+  const res = await api("POST", `/api/lines/${encodeURIComponent(lineId)}/start`, { inputValue: $("#mainInput").value.trim(), extras });
+  if (!res.ok) { showErr(errText(res)); return; }
+  showErr("");
+  load();
+}
+
+async function stop() {
+  const go = await modal(`Stop ${current.id}?`,
+    `<p>Stop <b>${esc(current.inputs.label)} ${esc(current.inputValue)}</b>?</p>
+     <p class="muted">Files arriving while stopped are not sent (only files after Start are processed).</p>`,
+    [{ text: "Cancel", value: false }, { text: "Stop", cls: "danger", value: true }]);
+  if (!go) return;
+  let res = await api("POST", `/api/lines/${encodeURIComponent(lineId)}/stop`, { force: false });
+  if (res.ok && res.data.needsConfirm) {
+    const list = res.data.queuedFiles.map(f => `<li class="mono">${esc(f)}</li>`).join("");
+    const force = await modal("Files not sent yet",
+      `<p><b>${esc(res.data.message)}</b></p>${list ? `<ul>${list}</ul>` : ""}
+       <p>If you stop now they will <b>not</b> be sent later.</p>`,
+      [{ text: "Keep running", value: false }, { text: "Stop anyway", cls: "danger", value: true }]);
+    if (!force) return;
+    res = await api("POST", `/api/lines/${encodeURIComponent(lineId)}/stop`, { force: true });
+  }
+  if (!res.ok) { showErr(errText(res)); return; }
+  showErr("");
+  load();
+}
+
+$("#dismiss").onclick = async () => { await api("POST", `/api/lines/${encodeURIComponent(lineId)}/dismiss`); load(); };
+
+$("#recent").addEventListener("click", async (e) => {
+  const resend = e.target.closest("[data-resend]");
+  if (resend) {
+    e.stopPropagation();
+    const name = resend.dataset.resend;
+    const ok = await modal("Resend file", `<p>Send <b class="mono">${esc(name)}</b> to the API again?</p>
+      <p class="muted">It is sent with the current run's ${esc(current.inputs.label)} and inputs.</p>`,
+      [{ text: "Cancel", value: false }, { text: "Resend", cls: "primary", value: true }]);
+    if (!ok) return;
+    const res = await api("POST", `/api/lines/${encodeURIComponent(lineId)}/resend`, { fileName: name });
+    if (!res.ok) modal("Resend", `<p class="msg err">${esc(errText(res))}</p>`);
+    return;
+  }
+  const row = e.target.closest("tr[data-i]");
+  if (!row) return;
+  const r = current.recent[+row.dataset.i];
+  let payload = r.payloads?.[0] || "(none)";
+  try { payload = JSON.stringify(JSON.parse(payload), null, 2); } catch { }
+  modal(r.fileName, `
+    <div class="info" style="grid-template-columns:1fr">
+      <div><span>Result:</span> <span class="k-${r.kind}">${esc(r.status)}</span></div>
+      <div><span>Message:</span> <span>${esc(r.message || "-")}</span></div>
+      <div><span>${esc(current.inputs.label)} in file / entered:</span> <span>${esc(r.fileValue)} / ${esc(r.inputValue)}</span></div>
+      <div><span>Inputs:</span> <span>${esc(Object.entries(r.extras || {}).map(([k, v]) => k + " = " + v).join(", ") || "-")}</span></div>
+      <div><span>HTTP:</span> <span>${esc(r.httpStatus ?? "-")}</span></div>
+    </div>
+    <div style="margin-top:10px"><b>API response</b><pre>${esc(r.responseBody || "-")}</pre></div>
+    <div style="margin-top:10px"><b>Data sent (first call)</b><pre>${esc(payload)}</pre></div>`);
+});
+
+const reload = throttle(load, 400);
+live(id => { if (id === "*" || id.toLowerCase() === lineId.toLowerCase()) reload(); });
+setInterval(load, 15000); // refresh "last seen" times
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings - AOI</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">AOI Line Server</span>
+  <span class="title">Settings</span>
+  <nav>
+    <a href="/" data-nav="overview">All lines</a>
+    <a href="/settings" data-nav="settings" class="active">Settings</a>
+  </nav>
+</header>
+
+<main>
+  <div class="card samplebar">
+    <b>Sample AOI file</b> <span class="muted">(for Detect / Preview / Test - read in your browser, not stored)</span>
+    <input type="file" id="sampleFile" accept=".tst,.TST,.txt,.csv,*/*">
+    <span id="sampleInfo" class="muted"></span>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button data-tab="lines" class="active">Lines</button>
+    <button data-tab="input">Operator input</button>
+    <button data-tab="format">File format &amp; qty</button>
+    <button data-tab="mapping">Column mapping</button>
+    <button data-tab="api">API</button>
+    <button data-tab="server">Server</button>
+  </div>
+
+  <!-- ================= LINES ================= -->
+  <section class="tab card active" id="tab-lines">
+    <p class="muted" style="margin-top:0">Lines are added automatically when an agent connects. Here you can rename, reorder or remove them.
+      Removing a line only removes it from this list; its history files are kept.</p>
+    <table class="grid">
+      <thead><tr><th>Line ID</th><th>Name (sent as {{LineName}})</th><th>Order</th><th>Agent PC</th><th>Watch folder</th><th>Status</th><th></th></tr></thead>
+      <tbody id="linesBody"></tbody>
+    </table>
+    <div class="row" style="margin-top:10px"><button id="addLine">+ Add line manually</button></div>
+  </section>
+
+  <!-- ================= OPERATOR INPUT ================= -->
+  <section class="tab card" id="tab-input">
+    <div class="form">
+      <h3>Main input (used to match files)</h3>
+      <label for="inLabel">Label shown to operator</label><input type="text" id="inLabel" data-path="processing.input.label" style="width:260px">
+      <label>Match the value with</label>
+      <div>
+        <label class="inline"><input type="radio" name="matchSource" value="FileNamePrefix"> File name, part before separator
+          <input type="text" data-path="processing.input.fileNameSeparator" style="width:50px"> <span class="muted">B613351X1105_2026….TST → B613351X1105</span></label>
+        <label class="inline" style="margin-top:6px"><input type="radio" name="matchSource" value="RecipeLine"> Recipe line of the file (File format tab)</label>
+        <label class="inline" style="margin-top:6px"><input type="radio" name="matchSource" value="DataField"> Data field (API Field Name in Column mapping)
+          <input type="text" data-path="processing.input.matchField" style="width:150px"></label>
+      </div>
+      <label>Options</label>
+      <div>
+        <label class="inline"><input type="checkbox" data-path="processing.input.onlyFilesAfterStart"> Only process files created after Start</label>
+        <label class="inline"><input type="checkbox" data-path="processing.input.warnOnMismatch"> Warn operator (banner + sound) when a file for another value arrives</label>
+        <label class="inline"><input type="checkbox" data-path="processing.input.rememberLastValue"> Pre-fill the last value on the line page</label>
+      </div>
+      <label>Check with sample file</label>
+      <div class="inline"><input type="text" id="matchTest" placeholder="value to test" style="width:220px"><button id="matchBtn">Check match</button><span id="matchOut" class="msg"></span></div>
+
+      <h3>Additional inputs (entered before the main input, e.g. Work Order)</h3>
+      <div style="grid-column:1/-1">
+        <p class="muted" style="margin:0 0 6px">Not used to match files - sent to the API as {{Key}}, e.g. "workOrder": "{{WorkOrder}}".</p>
+        <table class="grid">
+          <thead><tr><th>Key (placeholder)</th><th>Label shown to operator</th><th>Required</th><th>Pre-fill last value</th><th></th></tr></thead>
+          <tbody id="extrasBody"></tbody>
+        </table>
+        <div class="row" style="margin-top:8px"><button id="addExtra">+ Add input</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FILE FORMAT ================= -->
+  <section class="tab card" id="tab-format">
+    <div class="form">
+      <h3>File layout</h3>
+      <label>Recipe line no.</label><input type="number" min="0" data-path="processing.parsing.recipeLineNumber">
+      <label>Header line no.</label><input type="number" min="1" data-path="processing.parsing.headerLineNumber">
+      <label>Data starts at line no.</label><input type="number" min="1" data-path="processing.parsing.dataStartLineNumber">
+      <span class="hint">Empty lines and |----| separator lines are skipped.</span>
+      <label>Delimiter</label><input type="text" data-path="processing.parsing.delimiter" style="width:80px">
+      <span class="hint">Separator of data values. Use \t for TAB.</span>
+      <label>Date format in file</label><input type="text" data-path="processing.parsing.dateFormat" style="width:200px">
+      <label>Date format sent to API</label><input type="text" data-path="processing.parsing.outputDateFormat" style="width:200px">
+      <h3>Result and PCB qty</h3>
+      <label>Result field</label><input type="text" data-path="processing.parsing.resultField" style="width:200px">
+      <span class="hint">API Field Name (Column mapping) holding pass/fail.</span>
+      <label>Good values</label><input type="text" data-path="processing.parsing.goodValues" style="width:200px">
+      <span class="hint">Comma separated, e.g. G,PASS. Anything else = NG.</span>
+      <label>PCB qty calculation</label>
+      <div class="inline">
+        <select data-path="processing.parsing.qtyMode" style="width:auto"><option value="ByRow">By row (each row = 1 PCB)</option><option value="ByDistinctField">By distinct value of field</option></select>
+        <input type="text" data-path="processing.parsing.qtyField" style="width:160px" title="Field for distinct counting, e.g. BarcodeID">
+      </div>
+      <span class="hint">Distinct: rows with the same value (e.g. BarcodeID) = 1 PCB, NG if any of its rows is NG.</span>
+    </div>
+  </section>
+
+  <!-- ================= COLUMN MAPPING ================= -->
+  <section class="tab card" id="tab-mapping">
+    <p class="muted" style="margin-top:0"><b>API Field Name</b> = name sent to the API · <b>File header</b> = column name in the AOI file (looked up first) ·
+      <b>Index</b> = column position from 0, used if the header is not found · untick <b>Send</b> to leave a column out.</p>
+    <table class="grid">
+      <thead><tr><th>API Field Name</th><th>File header</th><th>Index</th><th>Type</th><th>Send</th><th></th></tr></thead>
+      <tbody id="mapBody"></tbody>
+    </table>
+    <div class="row" style="margin-top:10px">
+      <button id="addMap">+ Add</button>
+      <button id="detect">Detect from sample file</button>
+      <button id="previewMap" class="primary">Preview</button>
+    </div>
+    <div id="mapPreview" style="margin-top:12px"></div>
+  </section>
+
+  <!-- ================= API ================= -->
+  <section class="tab card" id="tab-api">
+    <div class="two">
+      <div>
+        <div class="form" style="grid-template-columns:150px minmax(0,1fr)">
+          <label>Send to API</label><label class="inline"><input type="checkbox" data-path="processing.api.enabled"> Enabled</label>
+          <label>URL</label><input type="url" data-path="processing.api.url">
+          <label>Method</label>
+          <div class="inline">
+            <select data-path="processing.api.method" style="width:auto"><option>POST</option><option>PUT</option><option>PATCH</option></select>
+            Content-Type <input type="text" data-path="processing.api.contentType" style="width:180px">
+          </div>
+          <label>Send mode</label>
+          <select data-path="processing.api.sendMode" style="width:auto"><option value="PerFile">One call per file (all rows)</option><option value="PerRow">One call per row</option></select>
+          <label>Timeout / retries</label>
+          <div class="inline"><input type="number" min="1" data-path="processing.api.timeoutSeconds"> s ·
+            <input type="number" min="0" data-path="processing.api.retryCount"> retries · retry failed file after
+            <input type="number" min="5" data-path="processing.api.retryDelaySeconds"> s</div>
+          <label>Success if</label>
+          <div class="inline">HTTP 2xx and response contains <input type="text" data-path="processing.api.successContains" style="width:160px" placeholder="(anything)"></div>
+          <label>Headers</label>
+          <div>
+            <table class="grid"><thead><tr><th>Name (e.g. Authorization, X-Api-Key)</th><th>Value</th><th></th></tr></thead><tbody id="hdrBody"></tbody></table>
+            <button class="small" id="addHdr" style="margin-top:6px">+ Header</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:14px"><b>Body template</b><span class="spacer"></span>
+          <button class="small" id="tplFile">Default (per file)</button><button class="small" id="tplRow">Default (per row)</button></div>
+        <textarea id="template" data-path="processing.api.payloadTemplate" rows="16" style="margin-top:6px"></textarea>
+        <details style="margin-top:6px"><summary>Available placeholders</summary><div class="help" id="placeholderHelp"></div></details>
+      </div>
+      <div>
+        <div class="row"><button class="primary" id="previewBody">Preview body</button><button id="testSend">Test send (sample file)</button></div>
+        <p class="muted">Preview uses Line L1 / "Line 1" and TEST-… for additional inputs. Test send posts the sample file to the URL now; it is not recorded as processed.</p>
+        <pre class="help preview-out" id="apiOut" style="min-height:300px">Choose a sample file, then Preview body.</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SERVER ================= -->
+  <section class="tab card" id="tab-server">
+    <div class="form">
+      <label>Port</label><input type="number" min="1" max="65535" data-path="port">
+      <span class="hint">Line PCs open http://THIS-PC:port. A change needs a server restart and a firewall rule for the new port.</span>
+      <label>Keep history (days)</label><input type="number" min="0" data-path="keepDays">
+      <span class="hint">Processed lists, archived files and logs older than this are deleted. 0 = keep forever. AOI files on the line PCs are never touched.</span>
+      <label>Agent offline after (seconds)</label><input type="number" min="5" data-path="agentOfflineSeconds">
+      <label>Data folder</label><span class="mono" id="dataFolder"></span>
+    </div>
+  </section>
+
+  <div class="savebar">
+    <button class="primary" id="save">Save settings</button>
+    <button id="reload">Discard changes</button>
+    <span class="msg" id="saveMsg"></span>
+  </div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+let S = null;           // settings being edited
+let views = [];         // live line info (agent PC, folder)
+let info = {};
+let sample = null;      // { name, content }
+let dirty = false;
+
+const get = (o, path) => path.split(".").reduce((x, k) => x?.[k], o);
+const set = (o, path, v) => { const ks = path.split("."); const last = ks.pop(); ks.reduce((x, k) => x[k], o)[last] = v; };
+const markDirty = () => { dirty = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "Unsaved changes"; };
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+// ---------------------------------------------------------------- tabs
+$$("#tabs button").forEach(b => b.onclick = () => {
+  $$("#tabs button").forEach(x => x.classList.toggle("active", x === b));
+  $$(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + b.dataset.tab));
+  location.hash = b.dataset.tab;
+});
+if (location.hash) $(`#tabs button[data-tab="${location.hash.slice(1)}"]`)?.click();
+
+// ---------------------------------------------------------------- load / bind
+async function loadAll() {
+  const [s, l, i] = await Promise.all([api("GET", "/api/settings"), api("GET", "/api/lines"), api("GET", "/api/info")]);
+  if (!s.ok) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = errText(s); return; }
+  S = s.data; views = l.ok ? l.data : []; info = i.ok ? i.data : {};
+  $("#placeholderHelp").textContent = info.placeholderHelp || "";
+  $("#dataFolder").textContent = info.dataFolder || "";
+  $$("[data-path]").forEach(el => {
+    const v = get(S, el.dataset.path);
+    if (el.type === "checkbox") el.checked = !!v; else el.value = v ?? "";
+  });
+  $$('input[name="matchSource"]').forEach(r => r.checked = r.value === S.processing.input.matchSource);
+  renderLines(); renderExtras(); renderMap(); renderHeaders();
+  dirty = false; $("#saveMsg").textContent = "";
+}
+
+document.addEventListener("input", e => {
+  const el = e.target;
+  if (!S) return;
+  if (el.dataset.path) {
+    set(S, el.dataset.path, el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value);
+    markDirty();
+  } else if (el.name === "matchSource") { S.processing.input.matchSource = el.value; markDirty(); }
+  else if (el.dataset.list) {
+    const arr = get(S, el.dataset.list), row = arr[+el.dataset.i];
+    row[el.dataset.f] = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;
+    markDirty();
+  }
+});
+document.addEventListener("change", e => { if (e.target.name === "matchSource") { S.processing.input.matchSource = e.target.value; markDirty(); } });
+
+/** Row inputs: data-list = settings path of the array, data-i = row, data-f = field. */
+const cell = (list, i, f, v, type = "text", extra = "") =>
+  type === "checkbox"
+    ? `<input type="checkbox" data-list="${list}" data-i="${i}" data-f="${f}" ${v ? "checked" : ""} ${extra}>`
+    : `<input type="${type}" data-list="${list}" data-i="${i}" data-f="${f}" value="${esc(v)}" ${extra}>`;
+
+function listAction(list, render) {
+  return (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    const arr = get(S, list), i = +b.dataset.i;
+    if (b.dataset.act === "del") arr.splice(i, 1);
+    if (b.dataset.act === "up" && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+    if (b.dataset.act === "down" && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+    markDirty(); render();
+  };
+}
+
+// ---------------------------------------------------------------- lines
+function renderLines() {
+  $("#linesBody").innerHTML = S.lines.length ? S.lines.map((l, i) => {
+    const v = views.find(x => x.id.toLowerCase() === l.id.toLowerCase());
+    return `<tr>
+      <td class="mono"><b>${esc(l.id)}</b></td>
+      <td>${cell("lines", i, "name", l.name)}</td>
+      <td style="width:90px">${cell("lines", i, "order", l.order, "number")}</td>
+      <td>${v ? (v.agent.online ? "🟢 " : "🔴 ") + esc(v.agent.machine || "-") : "-"}</td>
+      <td class="mono" style="font-size:12px">${esc(v?.agent.watchFolder || "-")}</td>
+      <td>${v ? `<span class="badge ${v.statusLevel}">${v.running ? "Running" : "Stopped"}</span>` : "<span class='muted'>new - save first</span>"}</td>
+      <td><button class="small" data-act="del" data-i="${i}">Remove</button></td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="muted">No lines yet - they appear when an agent connects.</td></tr>`;
+}
+$("#linesBody").addEventListener("click", listAction("lines", renderLines));
+$("#addLine").onclick = async () => {
+  const id = (prompt("Line ID (letters, numbers, - or _), e.g. L5") || "").trim();
+  if (!id) return;
+  if (!/^[A-Za-z0-9_-]{1,20}$/.test(id)) { alert("Invalid Line ID"); return; }
+  if (S.lines.some(l => l.id.toLowerCase() === id.toLowerCase())) { alert("This Line ID already exists"); return; }
+  S.lines.push({ id, name: "Line " + id.replace(/^L/i, ""), order: Math.max(0, ...S.lines.map(l => l.order)) + 1 });
+  markDirty(); renderLines();
+};
+
+// ---------------------------------------------------------------- extra inputs
+function renderExtras() {
+  const L = "processing.input.extraInputs";
+  $("#extrasBody").innerHTML = S.processing.input.extraInputs.map((x, i) => `<tr>
+    <td>${cell(L, i, "key", x.key)}</td><td>${cell(L, i, "label", x.label)}</td>
+    <td>${cell(L, i, "required", x.required, "checkbox")}</td><td>${cell(L, i, "rememberLastValue", x.rememberLastValue, "checkbox")}</td>
+    <td><button class="small" data-act="del" data-i="${i}">Remove</button></td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">None</td></tr>`;
+}
+$("#extrasBody").addEventListener("click", listAction("processing.input.extraInputs", renderExtras));
+$("#addExtra").onclick = () => { S.processing.input.extraInputs.push({ key: "NewInput", label: "New input", required: true, rememberLastValue: false }); markDirty(); renderExtras(); };
+
+// ---------------------------------------------------------------- column mapping
+const TYPES = ["Text", "Number", "Date"];
+function renderMap() {
+  const L = "processing.columnMappings";
+  $("#mapBody").innerHTML = S.processing.columnMappings.map((m, i) => `<tr>
+    <td>${cell(L, i, "fieldName", m.fieldName)}</td><td>${cell(L, i, "headerName", m.headerName)}</td>
+    <td style="width:90px">${cell(L, i, "columnIndex", m.columnIndex, "number")}</td>
+    <td style="width:120px"><select data-list="${L}" data-i="${i}" data-f="dataType">${TYPES.map(t => `<option ${t === m.dataType ? "selected" : ""}>${t}</option>`).join("")}</select></td>
+    <td>${cell(L, i, "include", m.include, "checkbox")}</td>
+    <td style="white-space:nowrap"><button class="small" data-act="up" data-i="${i}">▲</button><button class="small" data-act="down" data-i="${i}">▼</button>
+      <button class="small" data-act="del" data-i="${i}">Remove</button></td></tr>`).join("")
+    || `<tr><td colspan="6" class="muted">No columns - use Detect from sample file.</td></tr>`;
+}
+$("#mapBody").addEventListener("click", listAction("processing.columnMappings", renderMap));
+$("#addMap").onclick = () => { S.processing.columnMappings.push({ fieldName: "NewField", headerName: "", columnIndex: S.processing.columnMappings.length, dataType: "Text", include: true }); markDirty(); renderMap(); };
+
+function needSample() { if (sample) return false; alert("Choose a sample AOI file first (top of the page)."); return true; }
+
+$("#detect").onclick = async () => {
+  if (needSample()) return;
+  const r = await api("POST", "/api/tools/detect", { parsing: S.processing.parsing, content: sample.content });
+  if (!r.ok) { alert(errText(r)); return; }
+  if (!r.data.headers.length) { alert(`No headers found on line ${S.processing.parsing.headerLineNumber}. Check the File format tab.`); return; }
+  if (S.processing.columnMappings.length && !confirm(`Found ${r.data.headers.length} columns:\n${r.data.headers.join(", ")}\n\nReplace the current mapping?`)) return;
+  S.processing.columnMappings = r.data.mappings;
+  markDirty(); renderMap(); $("#previewMap").click();
+};
+
+async function preview(inputValue) {
+  return api("POST", "/api/tools/preview", { processing: S.processing, fileName: sample.name, content: sample.content, inputValue });
+}
+
+$("#previewMap").onclick = async () => {
+  if (needSample()) return;
+  const r = await preview();
+  if (!r.ok) { $("#mapPreview").innerHTML = `<p class="msg err">${esc(errText(r))}</p>`; return; }
+  const p = r.data, unit = p.qtyMode === "ByDistinctField" ? `distinct ${S.processing.parsing.qtyField}` : "by row";
+  $("#mapPreview").innerHTML = `
+    <p><b>Recipe</b> ${esc(p.recipe)} · <b>Rows</b> ${p.rowCount} · <b>PCB qty (${esc(unit)})</b> ${p.pcbQty} · <b>G</b> ${p.goodQty} · <b>NG</b> ${p.ngQty}<br>
+    <span class="muted">Headers in file: ${p.headers.map((h, i) => `[${i}] ${esc(h)}`).join(" | ")}</span></p>
+    ${p.warnings.map(w => `<p class="msg err">⚠ ${esc(w)}</p>`).join("")}
+    <div style="overflow:auto;max-height:360px"><table class="grid"><thead><tr>${p.columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead>
+    <tbody>${p.rows.map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+};
+
+$("#matchBtn").onclick = async () => {
+  if (needSample()) return;
+  const v = $("#matchTest").value.trim();
+  const r = await preview(v || null);
+  const out = $("#matchOut");
+  if (!r.ok) { out.className = "msg err"; out.textContent = errText(r); return; }
+  const found = r.data.matchValues.join(", ") || "(nothing)";
+  if (!v) { out.className = "msg"; out.textContent = `Value found in sample file: ${found}`; return; }
+  const ok = r.data.matchResult === "MATCH";
+  out.className = "msg " + (ok ? "ok" : "err");
+  out.textContent = ok ? `✔ MATCH - this file would be sent (file: ${found})` : `✘ NO MATCH - would be skipped with a warning. ${r.data.matchResult}`;
+};
+
+// ---------------------------------------------------------------- API
+function renderHeaders() {
+  const L = "processing.api.headers";
+  $("#hdrBody").innerHTML = S.processing.api.headers.map((h, i) => `<tr><td>${cell(L, i, "name", h.name)}</td><td>${cell(L, i, "value", h.value)}</td>
+    <td><button class="small" data-act="del" data-i="${i}">✕</button></td></tr>`).join("") || `<tr><td colspan="3" class="muted">None</td></tr>`;
+}
+$("#hdrBody").addEventListener("click", listAction("processing.api.headers", renderHeaders));
+$("#addHdr").onclick = () => { S.processing.api.headers.push({ name: "X-Api-Key", value: "" }); markDirty(); renderHeaders(); };
+
+function setTemplate(t) {
+  if (!confirm("Replace the body template with the default?")) return;
+  S.processing.api.payloadTemplate = t; $("#template").value = t; markDirty();
+}
+$("#tplFile").onclick = () => setTemplate(info.defaultPerFileTemplate);
+$("#tplRow").onclick = () => setTemplate(info.defaultPerRowTemplate);
+
+$("#previewBody").onclick = async () => {
+  if (needSample()) return;
+  const r = await preview();
+  if (!r.ok) { $("#apiOut").textContent = errText(r); return; }
+  const a = S.processing.api, p = r.data;
+  const head = `${a.method} ${a.url}\nContent-Type: ${a.contentType}\n` +
+    a.headers.filter(h => h.name).map(h => `${h.name}: ${h.value}`).join("\n") + `\nCalls for this file: ${p.payloadCount}\n\n`;
+  $("#apiOut").textContent = head + (p.payloadError ? `⚠ NOT VALID: ${p.payloadError}\n\n` : "") + p.payload +
+    (p.payloadCount > 1 ? `\n\n… and ${p.payloadCount - 1} more call(s), one per row` : "");
+};
+
+$("#testSend").onclick = async () => {
+  if (needSample()) return;
+  if (!confirm(`Send ${sample.name} to\n${S.processing.api.url}\nnow?`)) return;
+  $("#apiOut").textContent = "Sending…";
+  const r = await api("POST", "/api/tools/test-send", { processing: S.processing, fileName: sample.name, content: sample.content });
+  if (!r.ok) { $("#apiOut").textContent = errText(r); return; }
+  let resp = r.data.response || "";
+  try { resp = JSON.stringify(JSON.parse(resp), null, 2); } catch { }
+  $("#apiOut").textContent = `Result : ${r.data.status}\nMessage: ${r.data.message || "-"}\nHTTP   : ${r.data.httpStatus ?? "-"}\nResponse:\n${resp}`;
+};
+
+// ---------------------------------------------------------------- sample file
+$("#sampleFile").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  sample = { name: f.name, content: await f.text() };
+  $("#sampleInfo").textContent = `${f.name} · ${sample.content.split(/\r?\n/).length} lines`;
+};
+
+// ---------------------------------------------------------------- save
+$("#save").onclick = async () => {
+  const r = await api("PUT", "/api/settings", S);
+  const m = $("#saveMsg");
+  if (r.ok) { dirty = false; m.className = "msg ok"; m.textContent = "✔ " + r.data.message; loadAll().then(() => { m.className = "msg ok"; m.textContent = "✔ " + r.data.message; }); }
+  else { m.className = "msg err"; m.textContent = errText(r); }
+};
+$("#reload").onclick = () => { if (!dirty || confirm("Discard unsaved changes?")) loadAll(); };
+
+loadAll();
+</script>
+</body>
+</html>

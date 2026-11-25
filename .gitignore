@@ -12,3 +12,4 @@ settings.json
 processed.txt
 Processed/
 Logs/
+.claude/
