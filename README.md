@@ -1,4 +1,4 @@
-# AOI Line Server
+# Line PC Server
 
 Collects AOI result files (`*.TST`) from all production lines and sends them to a configurable API,
 with a web page per line for the operator (Work Order + Product Name, Start / Stop).
@@ -7,10 +7,10 @@ with a web page per line for the operator (Work Order + Product Name, Start / St
  LINE PC 1 (also the SERVER)              LINE PC 2 ... LINE PC 10
  AOI -> D:\AOI RESULT FILE                AOI -> D:\AOI RESULT FILE
           |                                        |
-   AOI Line Agent (L1)                      AOI Line Agent (L2...L10)
+   Line PC Agent (L1)                      Line PC Agent (L2...L10)
           |  forwards new files                    |
           v                                        |
-   AOI Line Server  <------------------------------+
+   Line PC Server  <------------------------------+
      - one run per line (Work Order, Product Name)
      - Product Name check, PCB qty, G/NG
      - sends to the API  ------------------------------>  API
@@ -39,10 +39,10 @@ Copy `Release\Server` to the PC, open **PowerShell as Administrator** in that fo
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install-Server.ps1
 ```
-* Installs to `C:\AoiLine\Server`, creates service **AoiLineServer** (auto start, restarts on failure)
-* Opens TCP port 5000 in Windows Firewall, creates desktop shortcut *AOI - All lines*
+* Installs to `C:\LinePC\Server`, creates service **LinePCServer** (auto start, restarts on failure)
+* Opens TCP port 5000 in Windows Firewall, creates desktop shortcut *Line PC - All lines*
 * Prints the address the agents must use, e.g. `http://LINE1-PC:5000`
-* Options: `-Port 5000`, `-InstallDir C:\AoiLine\Server`
+* Options: `-Port 5000`, `-InstallDir C:\LinePC\Server`
 
 Then open `http://localhost:5000/settings` and set up Column mapping and API (see below).
 
@@ -51,8 +51,8 @@ Copy `Release\Agent` to the PC, open **PowerShell as Administrator** in that fol
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install-Agent.ps1 -ServerUrl http://LINE1-PC:5000 -LineId L3 -LineName "Line 3"
 ```
-* Installs to `C:\AoiLine\Agent`, creates service **AoiLineAgent**, writes `agent.json`
-* Desktop shortcuts: **AOI Line L3** (operator page) and **AOI Agent** (agent status/settings, `http://localhost:5001`)
+* Installs to `C:\LinePC\Agent`, creates service **LinePCAgent**, writes `agent.json`
+* Desktop shortcuts: **Line PC L3** (operator page) and **Line PC Agent** (agent status/settings, `http://localhost:5001`)
 * Options: `-WatchFolder "D:\AOI RESULT FILE"` (default), `-LocalPort 5001`, `-InstallDir`
 * The line appears on the server automatically within a few seconds.
 
@@ -87,7 +87,7 @@ Body template placeholders include `{{LineId}}`, `{{LineName}}`, `{{WorkOrder}}`
 `{{PcbQty}}`, `{{GoodQty}}`, `{{NgQty}}`, `{{RowCount}}`, `{{Records}}`, `{{Field.BarcodeID}}` - full list on the API tab.
 
 Agent settings (server address, Line ID/name, watch folder, timing) are per line PC on its agent page
-`http://localhost:5001` or in `C:\AoiLine\Agent\agent.json`.
+`http://localhost:5001` or in `C:\LinePC\Agent\agent.json`.
 
 ---
 
@@ -103,12 +103,12 @@ Agent settings (server address, Line ID/name, watch folder, timing) are per line
 ## Files
 | Where | What |
 |---|---|
-| `C:\AoiLine\Server\settings.json` | All server settings (edit on the Settings page) |
-| `C:\AoiLine\Server\Lines\L3\state.json` | Current run of line L3 (survives restart) |
-| `C:\AoiLine\Server\Lines\L3\processed\yyyy-MM-dd.txt` | Files sent to the API with line, Product Name, Work Order, qty |
-| `C:\AoiLine\Server\Lines\L3\archive\yyyy-MM-dd\` | Copies of received files (for Resend) |
-| `C:\AoiLine\Server\Logs\yyyy-MM-dd.log` | Server log (all lines) |
-| `C:\AoiLine\Agent\agent.json`, `Forwarded\`, `Logs\` | Agent settings, forwarded lists, log |
+| `C:\LinePC\Server\settings.json` | All server settings (edit on the Settings page) |
+| `C:\LinePC\Server\Lines\L3\state.json` | Current run of line L3 (survives restart) |
+| `C:\LinePC\Server\Lines\L3\processed\yyyy-MM-dd.txt` | Files sent to the API with line, Product Name, Work Order, qty |
+| `C:\LinePC\Server\Lines\L3\archive\yyyy-MM-dd\` | Copies of received files (for Resend) |
+| `C:\LinePC\Server\Logs\yyyy-MM-dd.log` | Server log (all lines) |
+| `C:\LinePC\Agent\agent.json`, `Forwarded\`, `Logs\` | Agent settings, forwarded lists, log |
 
 History older than *Keep history (days)* (server) / *Delete forwarded lists after (days)* (agent) is deleted
 automatically - only these program files, never the AOI result files.

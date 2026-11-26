@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AOI Agent</title>
+<title>Line PC Agent</title>
 <style>
   :root { --bg:#f4f6f9; --card:#fff; --line:#dde3ea; --text:#1d2733; --muted:#5f6b7a; --ok:#2e9e46; --warn:#d98a00; --err:#cf3434; --accent:#1f6feb; }
   * { box-sizing: border-box; }
@@ -36,7 +36,7 @@
 </head>
 <body>
 <header>
-  <h1>AOI Agent</h1><span class="sub" id="hdrLine"></span>
+  <h1>Line PC Agent</h1><span class="sub" id="hdrLine"></span>
   <span style="flex:1"></span>
   <a class="btn primary" id="openLine" href="#" target="_blank">Open line page ↗</a>
 </header>
@@ -55,7 +55,7 @@
     <h2>Agent settings <span class="muted" style="font-weight:normal" id="cfgFile"></span></h2>
     <div class="grid">
       <label for="ServerUrl">Server address</label><input type="text" id="ServerUrl" placeholder="http://LINE1-PC:5000">
-      <span class="hint">The PC running AOI Line Server, with its port.</span>
+      <span class="hint">The PC running Line PC Server, with its port.</span>
       <label for="LineId">Line ID</label><input type="text" id="LineId" placeholder="L3" style="width:160px">
       <span class="hint">Short id, unique per line (letters, numbers, - or _). Sent to the API as {{LineId}}.</span>
       <label for="LineName">Line name</label><input type="text" id="LineName" placeholder="Line 3" style="width:260px">

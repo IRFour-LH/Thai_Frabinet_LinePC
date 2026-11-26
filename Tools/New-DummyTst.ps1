@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Creates a dummy AOI result file (.TST) in the same format as the AOI machine, for testing AOI Uploader.
+  Creates a dummy AOI result file (.TST) in the same format as the AOI machine, for testing Line PC Server.
 
 .EXAMPLE
   .\New-DummyTst.ps1 -Recipe B613351X1105
@@ -12,7 +12,7 @@
 
 .EXAMPLE
   .\New-DummyTst.ps1 -Recipe B613351X1105 -Count 5 -DelaySeconds 10
-  # 5 files, one every 10 seconds (simulates the AOI line running)
+  # 5 files, one every 10 seconds (simulates the production line running)
 #>
 param(
     [Parameter(Mandatory = $true)]

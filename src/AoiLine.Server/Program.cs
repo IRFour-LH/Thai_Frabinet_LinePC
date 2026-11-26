@@ -23,7 +23,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory,
     WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot"),
 });
-builder.Host.UseWindowsService(o => o.ServiceName = "AoiLineServer");
+builder.Host.UseWindowsService(o => o.ServiceName = "LinePCServer");
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Information);
@@ -44,5 +44,5 @@ app.UseStaticFiles(new StaticFileOptions
 });
 Endpoints.Map(app);
 
-AppLog.Info($"AOI Line Server {typeof(Endpoints).Assembly.GetName().Version?.ToString(3)} listening on port {port}, data folder {dataRoot}");
+AppLog.Info($"Line PC Server {typeof(Endpoints).Assembly.GetName().Version?.ToString(3)} listening on port {port}, data folder {dataRoot}");
 app.Run();

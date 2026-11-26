@@ -1,28 +1,28 @@
 <#
 .SYNOPSIS
-  Installs (or updates) AOI Line Server on this PC as a Windows service.
+  Installs (or updates) Line PC Server on this PC as a Windows service.
   Run in an Administrator PowerShell from the Server package folder.
 
   - Copies the program to the install folder (settings, history and logs there are kept on update)
-  - Creates the Windows service "AoiLineServer" (starts with Windows, restarts if it crashes)
+  - Creates the Windows service "LinePCServer" (starts with Windows, restarts if it crashes)
   - Opens the port in Windows Firewall so the line PCs can connect
-  - Puts an "AOI - All lines" shortcut on the desktop
+  - Puts an "Line PC - All lines" shortcut on the desktop
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\Install-Server.ps1
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\Install-Server.ps1 -Port 5000 -InstallDir "C:\AoiLine\Server"
+  powershell -ExecutionPolicy Bypass -File .\Install-Server.ps1 -Port 5000 -InstallDir "C:\LinePC\Server"
 #>
 param(
-    [string]$InstallDir = "C:\AoiLine\Server",
+    [string]$InstallDir = "C:\LinePC\Server",
     [int]$Port = 5000,
     # Copy files and write settings only - no service, no firewall (for testing without admin rights).
     [switch]$NoService,
     [string]$ShortcutFolder = [Environment]::GetFolderPath("CommonDesktopDirectory")
 )
 $ErrorActionPreference = "Stop"
-$ServiceName = "AoiLineServer"
-$ExeName = "AoiLine.Server.exe"
+$ServiceName = "LinePCServer"
+$ExeName = "LinePC.Server.exe"
 $src = $PSScriptRoot
 
 function Test-Admin {
@@ -75,7 +75,7 @@ if (-not $NoService) {
     # 4. Windows service
     if (-not (Get-Service $ServiceName -ErrorAction SilentlyContinue)) {
         Write-Host "Creating service $ServiceName ..."
-        New-Service -Name $ServiceName -BinaryPathName "`"$exe`"" -DisplayName "AOI Line Server" `
+        New-Service -Name $ServiceName -BinaryPathName "`"$exe`"" -DisplayName "Line PC Server" `
             -Description "Receives AOI result files from the line agents and sends them to the API. Web pages on port $Port." `
             -StartupType Automatic | Out-Null
     }
@@ -83,8 +83,8 @@ if (-not $NoService) {
     sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/30000 | Out-Null
 
     # 5. Firewall: allow line PCs to connect (all network profiles - factory networks are often "Public")
-    $ruleName = "AOI Line Server (TCP $Port)"
-    Get-NetFirewallRule -DisplayName "AOI Line Server*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    $ruleName = "Line PC Server (TCP $Port)"
+    Get-NetFirewallRule -DisplayName "Line PC Server*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Any | Out-Null
     Write-Host "Firewall rule '$ruleName' created."
 
@@ -101,8 +101,8 @@ if (-not $NoService) {
 
 # 6. Desktop shortcut
 if ($ShortcutFolder -and (Test-Path $ShortcutFolder)) {
-    Write-Utf8 (Join-Path $ShortcutFolder "AOI - All lines.url") "[InternetShortcut]`r`nURL=http://localhost:$Port/`r`n"
-    Write-Host "Shortcut 'AOI - All lines' created in $ShortcutFolder"
+    Write-Utf8 (Join-Path $ShortcutFolder "Line PC - All lines.url") "[InternetShortcut]`r`nURL=http://localhost:$Port/`r`n"
+    Write-Host "Shortcut 'Line PC - All lines' created in $ShortcutFolder"
 }
 
 Write-Host ""

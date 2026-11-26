@@ -5,7 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>AoiLine.Server</RootNamespace>
-    <AssemblyName>AoiLine.Server</AssemblyName>
+    <AssemblyName>LinePC.Server</AssemblyName>
+    <Product>Line PC Server</Product>
     <Version>2.0.0</Version>
   </PropertyGroup>
 

@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
   Builds the install packages:
-    Release\Server  - AOI Line Server (copy to the server PC, run Install-Server.ps1)
-    Release\Agent   - AOI Line Agent  (copy to each line PC, run Install-Agent.ps1)
+    Release\Server  - Line PC Server (copy to the server PC, run Install-Server.ps1)
+    Release\Agent   - Line PC Agent  (copy to each line PC, run Install-Agent.ps1)
   Self-contained: the target PCs do not need .NET installed.
 
 .EXAMPLE

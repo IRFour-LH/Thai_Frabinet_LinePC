@@ -1,4 +1,4 @@
-// Shared helpers for the AOI Line Server pages (no external libraries - works on a closed network).
+// Shared helpers for the Line PC Server pages (no external libraries - works on a closed network).
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

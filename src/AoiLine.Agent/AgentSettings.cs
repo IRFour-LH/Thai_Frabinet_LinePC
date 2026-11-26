@@ -5,7 +5,7 @@ namespace AoiLine.Agent;
 /// <summary>agent.json - the only settings kept on the line PC.</summary>
 public class AgentSettings
 {
-    /// <summary>Address of the AOI Line Server, e.g. http://LINE1-PC:5000</summary>
+    /// <summary>Address of the Line PC Server, e.g. http://LINE1-PC:5000</summary>
     public string ServerUrl { get; set; } = "http://localhost:5000";
 
     /// <summary>Short id of this line, e.g. L3 (letters, numbers, - or _).</summary>

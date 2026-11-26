@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>All lines - AOI</title>
+<title>All lines - Line PC</title>
 <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
 <header class="topbar">
-  <span class="brand">AOI Line Server</span>
+  <span class="brand">Line PC Server</span>
   <span class="title">All lines</span>
   <nav>
     <span class="conn" id="conn"></span>
@@ -21,7 +21,7 @@
   <section class="card totals" id="totals"></section>
   <section class="tiles" id="tiles"><div class="muted">Loading…</div></section>
   <p class="muted" style="margin-top:18px">
-    A line appears here automatically when the AOI Agent on its line PC connects. Click a line to open its page
+    A line appears here automatically when the Line PC Agent on its line PC connects. Click a line to open its page
     (bookmark that page on the line PC).
   </p>
 </main>
@@ -72,7 +72,7 @@ async function load() {
       </div>
       ${l.warningText ? `<div class="warnline">⚠ ${esc(l.warningText)}</div>` : ""}
     </a>`;
-  }).join("") : `<div class="card muted">No lines yet. Install the AOI Agent on a line PC and point it to this server.</div>`;
+  }).join("") : `<div class="card muted">No lines yet. Install the Line PC Agent on a line PC and point it to this server.</div>`;
 }
 
 live(throttle(id => { if (id === "*") loadLabels(); load(); }, 500));

@@ -21,7 +21,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory,
     WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot"),
 });
-builder.Host.UseWindowsService(o => o.ServiceName = "AoiLineAgent");
+builder.Host.UseWindowsService(o => o.ServiceName = "LinePCAgent");
 // Status/settings page is only reachable from this PC.
 builder.WebHost.UseUrls($"http://localhost:{store.Current.LocalPort}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);

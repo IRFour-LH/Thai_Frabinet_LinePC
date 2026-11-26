@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-  Installs (or updates) the AOI Line Agent on a line PC as a Windows service.
+  Installs (or updates) the Line PC Agent on a line PC as a Windows service.
   Run in an Administrator PowerShell from the Agent package folder.
 
   - Copies the program to the install folder (agent.json and history there are kept on update)
   - Writes server address, Line ID, line name and watch folder to agent.json
-  - Creates the Windows service "AoiLineAgent" (starts with Windows, restarts if it crashes)
-  - Desktop shortcuts: "AOI Line <ID>" (operator page on the server) and "AOI Agent" (this PC's agent page)
+  - Creates the Windows service "LinePCAgent" (starts with Windows, restarts if it crashes)
+  - Desktop shortcuts: "Line PC <ID>" (operator page on the server) and "Line PC Agent" (this PC's agent page)
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\Install-Agent.ps1 -ServerUrl http://LINE1-PC:5000 -LineId L3 -LineName "Line 3"
@@ -18,15 +18,15 @@ param(
     [Parameter(Mandatory = $true)] [string]$LineId,
     [string]$LineName = "",
     [string]$WatchFolder = "D:\AOI RESULT FILE",
-    [string]$InstallDir = "C:\AoiLine\Agent",
+    [string]$InstallDir = "C:\LinePC\Agent",
     [int]$LocalPort = 5001,
     # Copy files and write agent.json only - no service (for testing without admin rights).
     [switch]$NoService,
     [string]$ShortcutFolder = [Environment]::GetFolderPath("CommonDesktopDirectory")
 )
 $ErrorActionPreference = "Stop"
-$ServiceName = "AoiLineAgent"
-$ExeName = "AoiLine.Agent.exe"
+$ServiceName = "LinePCAgent"
+$ExeName = "LinePC.Agent.exe"
 $src = $PSScriptRoot
 
 function Test-Admin {
@@ -95,8 +95,8 @@ if (-not $NoService) {
     # 4. Windows service
     if (-not (Get-Service $ServiceName -ErrorAction SilentlyContinue)) {
         Write-Host "Creating service $ServiceName ..."
-        New-Service -Name $ServiceName -BinaryPathName "`"$exe`"" -DisplayName "AOI Line Agent" `
-            -Description "Watches the AOI result folder and forwards new files to the AOI Line Server ($ServerUrl), line $LineId." `
+        New-Service -Name $ServiceName -BinaryPathName "`"$exe`"" -DisplayName "Line PC Agent" `
+            -Description "Watches the AOI result folder and forwards new files to the Line PC Server ($ServerUrl), line $LineId." `
             -StartupType Automatic | Out-Null
     }
     sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/30000 | Out-Null
@@ -115,9 +115,9 @@ try {
 # 6. Desktop shortcuts
 if ($ShortcutFolder -and (Test-Path $ShortcutFolder)) {
     $lineUrl = "$($ServerUrl.TrimEnd('/'))/line/$LineId"
-    Write-Utf8 (Join-Path $ShortcutFolder "AOI Line $LineId.url") "[InternetShortcut]`r`nURL=$lineUrl`r`n"
-    Write-Utf8 (Join-Path $ShortcutFolder "AOI Agent.url") "[InternetShortcut]`r`nURL=http://localhost:$LocalPort/`r`n"
-    Write-Host "Shortcuts 'AOI Line $LineId' and 'AOI Agent' created in $ShortcutFolder"
+    Write-Utf8 (Join-Path $ShortcutFolder "Line PC $LineId.url") "[InternetShortcut]`r`nURL=$lineUrl`r`n"
+    Write-Utf8 (Join-Path $ShortcutFolder "Line PC Agent.url") "[InternetShortcut]`r`nURL=http://localhost:$LocalPort/`r`n"
+    Write-Host "Shortcuts 'Line PC $LineId' and 'Line PC Agent' created in $ShortcutFolder"
 }
 
 Write-Host ""
