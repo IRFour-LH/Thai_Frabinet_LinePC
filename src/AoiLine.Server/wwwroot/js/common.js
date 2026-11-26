@@ -50,7 +50,7 @@ function errText(res) {
 function live(onChange) {
   let es, retry;
   const conn = document.getElementById("conn");
-  const set = (ok) => { if (conn) { conn.textContent = ok ? "● live" : "● connection lost - retrying…"; conn.className = "conn" + (ok ? "" : " lost"); } };
+  const set = (ok) => { if (conn) { conn.textContent = ok ? "Live" : "Connection lost - retrying…"; conn.className = "conn" + (ok ? "" : " lost"); } };
   const open = () => {
     es = new EventSource("/api/events");
     es.onopen = () => { set(true); onChange("*"); };
