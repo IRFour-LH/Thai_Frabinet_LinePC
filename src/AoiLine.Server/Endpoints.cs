@@ -11,10 +11,17 @@ public static class Endpoints
     public static void Map(WebApplication app)
     {
         // ------------------------------------------------------------ pages
-        app.MapGet("/line/{id}", (string id, IWebHostEnvironment env) =>
-            Results.File(Path.Combine(env.WebRootPath, "line.html"), "text/html"));
-        app.MapGet("/settings", (IWebHostEnvironment env) =>
-            Results.File(Path.Combine(env.WebRootPath, "settings.html"), "text/html"));
+        // "no-cache": the browser must check for a newer page every time (otherwise it may show an old version after an update).
+        app.MapGet("/line/{id}", (string id, IWebHostEnvironment env, HttpContext ctx) =>
+        {
+            ctx.Response.Headers.CacheControl = "no-cache";
+            return Results.File(Path.Combine(env.WebRootPath, "line.html"), "text/html");
+        });
+        app.MapGet("/settings", (IWebHostEnvironment env, HttpContext ctx) =>
+        {
+            ctx.Response.Headers.CacheControl = "no-cache";
+            return Results.File(Path.Combine(env.WebRootPath, "settings.html"), "text/html");
+        });
 
         // ------------------------------------------------------------ agent API
         app.MapPost("/api/agent/heartbeat", (HeartbeatRequest req, LineManager lines) =>
